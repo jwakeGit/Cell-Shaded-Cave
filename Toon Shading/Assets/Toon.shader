@@ -12,6 +12,7 @@
 	_Glossiness("Glossiness", Float) = 32
 	_RimColor("Rim Color", Color) = (1, 1, 1, 1)
 	_RimAmount("Rim Amount", Range(0, 1)) = 0.716
+	_RimThreshold("Rim Threshold", Range(0, 1)) = 0.1 //Controls how much the rim extends over the sphere
 	}
 		SubShader
 	{
@@ -26,9 +27,11 @@
 			CGPROGRAM
 			#pragma vertex vert
 			#pragma fragment frag
+			#pragma multi_compile_fwdbase //Used for shadows
 
 			#include "UnityCG.cginc"
 			#include "Lighting.cginc"
+			#include "AutoLight.cginc"
 
 			struct appdata
 			{
@@ -45,6 +48,8 @@
 
 				float4 pos : SV_POSITION;
 				float2 uv : TEXCOORD0;
+
+				SHADOW_COORDS(2)
 			};
 
 			sampler2D _MainTex;
@@ -57,6 +62,9 @@
 				o.uv = TRANSFORM_TEX(v.uv, _MainTex);
 				o.worldNormal = UnityObjectToWorldNormal(v.normal);
 				o.viewDir = WorldSpaceViewDir(v.vertex);
+
+				TRANSFER_SHADOW(o)
+
 				return o;
 			}
 
@@ -66,13 +74,15 @@
 			float4 _SpecularColor;
 			float4 _RimColor;
 			float _RimAmount;
+			float _RimThreshold;
 
 			float4 frag(v2f i) : SV_Target
 			{
 				//Shadow
 				float3 normal = normalize(i.worldNormal);
 				float NdotL = dot(_WorldSpaceLightPos0, normal);
-				float lightIntensity = smoothstep(0, 0.01, NdotL); //Helps turn the regular shading to toon shading
+				float shadow = SHADOW_ATTENUATION(i);
+				float lightIntensity = smoothstep(0, 0.01, NdotL * shadow); //Helps turn the regular shading to toon shading
 				//Smoothstep helps get rid of jaggedness
 				float4 light = lightIntensity * _LightColor0;
 
@@ -85,7 +95,8 @@
 				float4 specular = specularIntensitySmooth * _SpecularColor;
 
 				float4 rimDot = 1 - dot(viewDir, normal);
-				float rimIntensity = smoothstep(_RimAmount - 0.01, _RimAmount + 0.01, rimDot);
+				float rimIntensity = rimDot * pow(NdotL, _RimThreshold); //This is multiplying by the light refelection
+				rimIntensity = smoothstep(_RimAmount - 0.01, _RimAmount + 0.01, rimIntensity);
 				float4 rim = rimIntensity * _RimColor;
 
 				float4 sample = tex2D(_MainTex, i.uv);
@@ -94,5 +105,7 @@
 			}
 			ENDCG
 		}
+		// Insert just after the closing curly brace of the existing Pass.
+		UsePass "Legacy Shaders/VertexLit/SHADOWCASTER"
 	}
 }
