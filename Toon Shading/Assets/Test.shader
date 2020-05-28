@@ -63,8 +63,7 @@
 			float attenuation = 1.0 / (1.0 +
 				unity_4LightAtten0[index] * squaredDistance);
 			float3 diffuseReflection = attenuation
-				* unity_LightColor[index].rgb * _Color.rgb
-				* max(0.0, dot(output.normalDir, lightDirection));
+				* unity_LightColor[index].rgb * _Color.rgb;
 
 			output.vertexLighting =
 				output.vertexLighting + diffuseReflection;
@@ -119,7 +118,7 @@
 		}
 
 		return float4(input.vertexLighting + ambientLighting
-			+ diffuseReflection + specularReflection, 1.0);
+			+ diffuseReflection + specularReflection, 1.0) * attenuation;
 	}
 		ENDCG
 	}
