@@ -34,6 +34,14 @@
 			#include "Lighting.cginc"
 			#include "AutoLight.cginc"
 
+			float4 _Color;
+			float4 _AmbientColor;
+			float _Glossiness;
+			float4 _SpecularColor;
+			float4 _RimColor;
+			float _RimAmount;
+			float _RimThreshold;
+
 			struct appdata
 			{
 				float3 normal : NORMAL;
@@ -50,6 +58,8 @@
 				float4 pos : SV_POSITION;
 				float2 uv : TEXCOORD0;
 
+				float3 vertexLighting : TEXCOORD2;
+
 				SHADOW_COORDS(2)
 			};
 
@@ -64,18 +74,31 @@
 				o.worldNormal = UnityObjectToWorldNormal(v.normal);
 				o.viewDir = WorldSpaceViewDir(v.vertex);
 
+				for (int i = 0; i < 4; i++)
+				{
+					float4 lightPos = float4(unity_4LightPosX0[i],
+						unity_4LightPosY0[i],
+						unity_4LightPosZ0[i], 1.0);
+
+					float3 vertexToLightSource =
+						lightPos.xyz - o.pos.xyz;
+					float3 lightDirection = normalize(vertexToLightSource);
+					float squaredDistance =
+						dot(vertexToLightSource, vertexToLightSource);
+					float attenuation = 1.0 / (1.0 +
+						unity_4LightAtten0[i] * squaredDistance);
+					float3 diffuseReflection = attenuation
+						* unity_LightColor[i].rgb * _Color.rgb
+						* max(0.0, dot(o.worldNormal, lightDirection));
+
+					o.vertexLighting =
+						o.vertexLighting + diffuseReflection;
+				}
+
 				TRANSFER_SHADOW(o)
 
 				return o;
 			}
-
-			float4 _Color;
-			float4 _AmbientColor;
-			float _Glossiness;
-			float4 _SpecularColor;
-			float4 _RimColor;
-			float _RimAmount;
-			float _RimThreshold;
 
 			float4 frag(v2f i) : SV_Target
 			{
@@ -108,16 +131,43 @@
 
 					float4 sample = tex2D(_MainTex, i.uv);
 
-					return _Color * sample * (_AmbientColor + light + specular + rim);
+					return _Color * sample * (_AmbientColor + light + specular + rim) + float4(i.vertexLighting, 1.0);
 				}
 				else
 				{
-					float3 normalDirection = normalize(i.worldNormal);
-					float3 viewDirection = normalize(_WorldSpaceCameraPos.xyz - i.pos.xyz);
-					float3 lightDirection;
-					float attenuation;
+					float3 vertexToLightSource = _WorldSpaceLightPos0.xyz - i.pos.xyz;
+					float distance = length(vertexToLightSource);
+					float attenuation = 1.0 / distance;
+					float3 lightDirection = normalize(vertexToLightSource);
 
-					return _Color;
+					//Shadow
+					float3 normal = normalize(i.worldNormal);
+					float NdotL = dot(_WorldSpaceLightPos0, normal);
+
+					//Additional lights?
+					//Might need a second pass
+
+					float shadow = SHADOW_ATTENUATION(i);
+					float lightIntensity = smoothstep(0, 0.01, NdotL * shadow); //Helps turn the regular shading to toon shading
+																				//Smoothstep helps get rid of jaggedness
+					float4 light = lightIntensity * _LightColor0;
+
+					//Specular Reflection
+					float3 viewDir = normalize(i.viewDir);
+					float3 halfVector = normalize(_WorldSpaceLightPos0 + viewDir);
+					float NdotH = dot(normal, halfVector);
+					float specularIntensity = pow(NdotH * lightIntensity, _Glossiness * _Glossiness);
+					float specularIntensitySmooth = smoothstep(0.005, 0.05, specularIntensity);
+					float4 specular = specularIntensitySmooth * _SpecularColor;
+
+					float4 rimDot = 1 - dot(viewDir, normal);
+					float rimIntensity = rimDot * pow(NdotL, _RimThreshold); //This is multiplying by the light refelection
+					rimIntensity = smoothstep(_RimAmount - 0.01, _RimAmount + 0.01, rimIntensity);
+					float4 rim = rimIntensity * _RimColor;
+
+					float4 sample = tex2D(_MainTex, i.uv);
+
+					return _Color * sample * (_AmbientColor + light + specular + rim);
 				}
 			}
 			ENDCG
