@@ -309,7 +309,7 @@
 					float shadow = SHADOW_ATTENUATION(i);
 					float lightIntensity = smoothstep(0, 0.01, NdotL * shadow); //Helps turn the regular shading to toon shading
 																				//Smoothstep helps get rid of jaggedness
-					float4 light = lightIntensity * _LightColor0;
+					float4 light = lightIntensity * _LightColor0/* * attenuation*/;
 
 					//Specular Reflection
 					float3 viewDir = normalize(i.viewDir);
