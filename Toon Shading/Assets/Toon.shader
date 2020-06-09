@@ -78,27 +78,6 @@ Shader "Roystan/Toon"
 				o.worldNormal = UnityObjectToWorldNormal(v.normal);
 				o.viewDir = WorldSpaceViewDir(v.vertex);
 
-				/*for (int i = 0; i < 4; i++)
-				{
-					float4 lightPos = float4(unity_4LightPosX0[i],
-						unity_4LightPosY0[i],
-						unity_4LightPosZ0[i], 1.0);
-
-					float3 vertexToLightSource =
-						lightPos.xyz - o.pos.xyz;
-					float3 lightDirection = normalize(vertexToLightSource);
-					float squaredDistance =
-						dot(vertexToLightSource, vertexToLightSource);
-					float attenuation = 1.0 / (1.0 +
-						unity_4LightAtten0[i] * squaredDistance);
-					float3 diffuseReflection = attenuation
-						* unity_LightColor[i].rgb * _Color.rgb
-						* max(0.0, dot(o.worldNormal, lightDirection));
-
-					o.vertexLighting =
-						o.vertexLighting + diffuseReflection;
-				}*/
-
 				TRANSFER_SHADOW(o)
 
 				return o;
@@ -274,11 +253,20 @@ Shader "Roystan/Toon"
 																			//Smoothstep helps get rid of jaggedness
 				float4 light = lightIntensity * _LightColor0;
 				
-				
+				//Specular and Rim Lighting
+				float3 halfVector = normalize(_WorldSpaceLightPos0 + viewDir);
+				float NdotH = dot(normal, halfVector);
+				float specularIntensity = pow(NdotH * lightIntensity, _Glossiness * _Glossiness);
+				float specularIntensitySmooth = smoothstep(0.005, 0.05, specularIntensity);
+				float4 specular = specularIntensitySmooth * _SpecularColor;
+
+				float4 rimDot = 1 - dot(viewDir, normal);
+				float rimIntensity = rimDot * pow(NdotL, _RimThreshold); //This is multiplying by the light refelection
+				rimIntensity = smoothstep(_RimAmount - 0.01, _RimAmount + 0.01, rimIntensity);
+				float4 rim = rimIntensity * _RimColor;
 
 				//Final result
 				float4 sample = tex2D(_MainTex, i.uv);
-				//return _Color * sample * (_AmbientColor + light) * attenuation;
 
 				if (attenuation > 0.6)
 				{
@@ -293,7 +281,7 @@ Shader "Roystan/Toon"
 					attenuation = 0;
 				}
 
-				return _LightColor0 * attenuation * sample * _Color * lightIntensity;
+				return attenuation * sample * _Color * (_AmbientColor + light + specular + rim);
 			}
 			ENDCG
 		}
